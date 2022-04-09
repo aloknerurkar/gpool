@@ -1,0 +1,67 @@
+name: Go
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  golangci:
+    strategy:
+      matrix:
+        go: [1.16]
+        os: [ubuntu-latest]
+    name: golangci-lint
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.29
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        go: [1.16]
+        # Windows is currently broken due to some issue
+        # os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
+    steps:
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 1
+    - name: Cache Go modules
+      uses: actions/cache@v1
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.OS }}-build-${{ env.cache-name }}-
+          ${{ runner.OS }}-build-
+          ${{ runner.OS }}-
+    - name: Build
+      run: go build -trimpath ./...
+    - name: Test
+      run: go test -v ./...
+    - name: Test with race
+      run: go test -v -race -failfast ./...
+    - name: Coverage
+      if: matrix.os == 'ubuntu-latest'
+      run: go test -coverprofile=cover.out ./...
+    - name: Coveralls
+      if: matrix.os == 'ubuntu-latest'
+      uses: shogo82148/actions-goveralls@v1
+      with:
+        path-to-profile: cover.out
+      env:
+        COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
