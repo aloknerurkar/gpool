@@ -328,6 +328,7 @@ func TestPoolOnGetHook(t *testing.T) {
 	t.Run("return objects after Close", func(t *testing.T) {
 		startedClose := make(chan struct{})
 		wg := sync.WaitGroup{}
+		errc := make(chan error, 1)
 
 		wg.Add(1)
 		go func() {
@@ -336,7 +337,7 @@ func TestPoolOnGetHook(t *testing.T) {
 
 			err := p.Close()
 			if err != nil {
-				t.Fatal(err)
+				errc <- err
 			}
 		}()
 
@@ -350,6 +351,11 @@ func TestPoolOnGetHook(t *testing.T) {
 		}()
 
 		wg.Wait()
+		select {
+		case err := <-errc:
+			t.Fatal(err)
+		default:
+		}
 	})
 }
 
@@ -412,6 +418,7 @@ func TestPoolErrors(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 		startedClose := make(chan struct{})
+		errc := make(chan error, 2)
 
 		wg.Add(1)
 		go func() {
@@ -419,7 +426,7 @@ func TestPoolErrors(t *testing.T) {
 			close(startedClose)
 			err := p.Close()
 			if err == nil {
-				t.Fatal("expected error on close")
+				errc <- errors.New("expected error on close")
 			}
 		}()
 
@@ -429,10 +436,15 @@ func TestPoolErrors(t *testing.T) {
 			<-startedClose
 			_, _, err := p.Get(context.Background())
 			if err == nil {
-				t.Fatal("expected error on get after close")
+				errc <- errors.New("expected error on get after close")
 			}
 		}()
 
 		wg.Wait()
+		select {
+		case err := <-errc:
+			t.Fatal(err)
+		default:
+		}
 	})
 }
