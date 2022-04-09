@@ -127,7 +127,7 @@ func (p *Pool[T]) Get(ctx context.Context) (*T, func(), error) {
 
 	done := func(o *T) func() {
 		return func() {
-			// explicitly onGetHook for quit first
+			// explicitly check for quit first
 			select {
 			case <-p.quit:
 				remove(o)
@@ -169,8 +169,8 @@ func (p *Pool[T]) Get(ctx context.Context) (*T, func(), error) {
 				ts, ok := p.onGetHookMap[o]
 				p.onGetHookMu.Unlock()
 
-				// If there is no timeout for onGetHook, we need to onGetHook each entry
-				// else only the entries that have not been onGetHooked for the timeout
+				// If there is no timeout for onGetHook, we need to check each entry
+				// else only the entries that have not been checked for the timeout
 				// duration
 				if (ok && time.Now().After(ts)) || !ok {
 					err := p.onGetHookFn(o)
