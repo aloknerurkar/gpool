@@ -448,3 +448,98 @@ func TestPoolErrors(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkGet(t *testing.B) {
+
+	p := gpool.New[obj1](
+		gpool.WithMax[obj1](4000000),
+		gpool.WithMaxIdle[obj1](1000000),
+	)
+
+	ctx := context.Background()
+
+	t.Run("return immediately", func(t *testing.B) {
+		t.ReportAllocs()
+		t.ResetTimer()
+		for n := 0; n < t.N; n++ {
+			o, done, err := p.Get(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if o.val != 0 {
+				t.Fatal("unexpected value")
+			}
+			done()
+		}
+	})
+
+	t.Run("dont return", func(t *testing.B) {
+		t.ReportAllocs()
+		t.ResetTimer()
+
+		doneC := make(chan func(), 100)
+		complete := make(chan struct{})
+
+		go func() {
+			defer close(complete)
+			for d := range doneC {
+				d()
+			}
+		}()
+
+		for n := 0; n < t.N; n++ {
+			o, done, err := p.Get(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if o.val != 0 {
+				t.Fatal("unexpected value")
+			}
+			doneC <- done
+		}
+		close(doneC)
+		<-complete
+	})
+}
+
+func BenchmarkSyncPoolGet(t *testing.B) {
+
+	p := sync.Pool{New: func() any { return new(obj1) }}
+
+	t.Run("return immediately", func(t *testing.B) {
+		t.ReportAllocs()
+		t.ResetTimer()
+		for n := 0; n < t.N; n++ {
+			o := p.Get()
+			if o.(*obj1).val != 0 {
+				t.Fatal("unexpected value")
+			}
+			p.Put(o)
+		}
+	})
+
+	t.Run("dont return", func(t *testing.B) {
+		t.ReportAllocs()
+		t.ResetTimer()
+
+		doneC := make(chan *obj1, 100)
+		complete := make(chan struct{})
+
+		go func() {
+			defer close(complete)
+			for d := range doneC {
+				p.Put(d)
+			}
+		}()
+
+		for n := 0; n < t.N; n++ {
+			o := p.Get()
+			if o.(*obj1).val != 0 {
+				t.Fatal("unexpected value")
+			}
+			doneC <- o.(*obj1)
+		}
+		close(doneC)
+		<-complete
+	})
+}
